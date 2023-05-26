@@ -21,9 +21,7 @@ const model = {
       new Log("end of cutscene", "blue"),
     ]);
     myBL.isCutscenePlaying = true;
-    myBL.pause();
     await myEM.start();
-    myBL.resume();
     myBL.isCutscenePlaying = false;
   },
   startBL: () => {

@@ -4,6 +4,7 @@ export type EventConfigType = "LOOP" | "CUTSCENE";
 
 export class EventManager {
   isCutscenePlaying: boolean = false;
+  isCallBusy: boolean = false;
   eventEngine: Engine | undefined;
   mode: EventConfigType = "CUTSCENE";
   sequence: Array<GameEvent> = [];
@@ -13,13 +14,15 @@ export class EventManager {
   constructor(setmode: EventConfigType) {
     this.mode = setmode;
     this.loopIndex = 0;
+
     this.eventEngine = Engine.create({
       callback: this.behaviorLoop,
       ms: 200,
       started: false,
       resetThreshold: 10000,
-      oneTime: true,
+      oneTime: false,
     });
+
     this.cutscenePromise = undefined;
   }
 
@@ -45,11 +48,12 @@ export class EventManager {
   };
 
   behaviorLoop = async (deltatime: number, now: number) => {
+    if (this.isCallBusy) return;
     if (this.isCutscenePlaying) return;
     if (this.sequence.length == 0) return;
-    this.pause();
+    this.isCallBusy = true;
     await this.sequence[this.loopIndex].init();
-    this.resume();
+    this.isCallBusy = false;
     this.loopIndex++;
 
     //check for end of sequence
