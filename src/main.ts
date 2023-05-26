@@ -1,94 +1,97 @@
 import "./style.css";
 import { UI } from "@peasy-lib/peasy-ui";
 import { Engine } from "@peasy-lib/peasy-engine";
+import chalk from "chalk";
 
 class EventManager {
-  static eventEngine: Engine | undefined;
-  static mode: EventConfigType;
-  static sequence: Array<GameEvent>;
-  static loopIndex: number;
-  static cutscenePromise: (value: void | PromiseLike<void>) => void;
+  isCutscenePlaying: boolean = false;
+  eventEngine: Engine | undefined;
+  mode: EventConfigType = "CUTSCENE";
+  sequence: Array<GameEvent> = [];
+  loopIndex: number = 0;
+  cutscenePromise: ((value: void | PromiseLike<void>) => void) | undefined;
 
-  static init(setmode: EventConfigType) {
-    EventManager.mode = setmode;
-    EventManager.loopIndex = 0;
-    EventManager.eventEngine = Engine.create({
-      callback: EventManager.behaviorLoop,
+  constructor(setmode: EventConfigType) {
+    this.mode = setmode;
+    this.loopIndex = 0;
+    this.eventEngine = Engine.create({
+      callback: this.behaviorLoop,
       ms: 200,
       started: false,
       resetThreshold: 10000,
       oneTime: true,
     });
+    this.cutscenePromise = undefined;
   }
 
-  static loadSequence(seq: GameEvent[]) {
-    EventManager.sequence = [...seq];
-  }
+  loadSequence = (seq: GameEvent[]) => {
+    this.sequence = [];
+    this.sequence = [...seq];
+    console.log(this.sequence);
+  };
 
-  static pause() {
-    if (EventManager.eventEngine) EventManager.eventEngine.pause();
-  }
+  pause = () => {
+    if (this.eventEngine) this.eventEngine.pause();
+  };
 
-  static start(): Promise<void> | void {
-    if (EventManager.eventEngine) EventManager.eventEngine.start();
-    if (EventManager.mode == "CUTSCENE") {
+  start = (): Promise<void> | void => {
+    if (this.eventEngine) this.eventEngine.start();
+    if (this.mode == "CUTSCENE") {
       return new Promise(resolve => {
-        EventManager.cutscenePromise = resolve;
+        this.cutscenePromise = resolve;
       });
     }
-  }
-  static resume() {
-    if (EventManager.eventEngine) EventManager?.eventEngine.start();
-  }
+  };
+  resume = () => {
+    if (this.eventEngine) this?.eventEngine.start();
+  };
 
-  static async behaviorLoop(deltatime: number, now: number) {
-    if (EventManager.sequence.length == 0) return;
-
-    EventManager.pause();
-    await EventManager.sequence[EventManager.loopIndex].init();
-    EventManager.resume();
-    EventManager.loopIndex++;
+  behaviorLoop = async (deltatime: number, now: number) => {
+    if (this.isCutscenePlaying) return;
+    if (this.sequence.length == 0) return;
+    this.pause();
+    await this.sequence[this.loopIndex].init();
+    this.resume();
+    this.loopIndex++;
 
     //check for end of sequence
-    if (EventManager.loopIndex >= EventManager.sequence.length) {
+    if (this.loopIndex >= this.sequence.length) {
       //check mode
-      if (EventManager.mode == "CUTSCENE") {
-        EventManager.eventEngine = undefined;
-        EventManager.sequence = [];
-        EventManager.cutscenePromise();
+      if (this.mode == "CUTSCENE") {
+        this.eventEngine?.stop();
+        this.sequence = [];
+        if (this.cutscenePromise) this.cutscenePromise();
       }
-      EventManager.loopIndex = 0;
+      this.loopIndex = 0;
     }
-  }
+  };
 }
 
-let myEM = EventManager;
-let myBL = EventManager;
+let myEM = new EventManager("CUTSCENE");
+let myBL = new EventManager("LOOP");
 const model = {
   toggleCutscene: async () => {
-    myEM.init("CUTSCENE");
     myEM.loadSequence([
-      new Log("start of cutscene"),
+      new Log("start of cutscene", "blue"),
       new Walk(200, "up"),
       new Wait(2500),
-      new Alert("this is my alert"),
       new Wait(5000),
-      new Log("end of cutscene"),
+      new Log("end of cutscene", "blue"),
     ]);
+    myBL.isCutscenePlaying = true;
     myBL.pause();
     await myEM.start();
-    console.log("log =>resuming behaviorloop");
     myBL.resume();
+    myBL.isCutscenePlaying = false;
   },
   startBL: () => {
-    myBL.init("LOOP");
     myBL.loadSequence([
-      new Log("start of Behavior Loop"),
-      new Walk(500, "up"),
-      new Wait(2000),
-      new Wait(1200),
-      new Walk(500, "down"),
-      new Log("end of Behavior Loop"),
+      new Log("start of Behavior Loop", "red"),
+      new BLWalk(500, "BL up"),
+      new BLWait(2000),
+      new BLWait(1200),
+      new BLWalk(500, "BL down"),
+      new Log("end of Behavior Loop", "red"),
     ]);
     myBL.start();
   },
@@ -131,7 +134,25 @@ class Walk extends GameEvent {
 
   init(): Promise<void> {
     return new Promise(resolve => {
-      console.log(`Im WALKING HERE, distance: ${this.distance}, in direction: ${this.direction} `);
+      console.log(chalk.blue(`Im WALKING HERE, distance: ${this.distance}, in direction: ${this.direction} `));
+      setTimeout(() => {
+        resolve();
+      }, 1000 + this.distance);
+    });
+  }
+}
+class BLWalk extends GameEvent {
+  direction: string;
+  distance: number;
+  constructor(distance: number, direction: string) {
+    super("walk");
+    this.direction = direction;
+    this.distance = distance;
+  }
+
+  init(): Promise<void> {
+    return new Promise(resolve => {
+      console.log(chalk.red(`LOOP -> Im WALKING HERE, distance: ${this.distance}, in direction: ${this.direction} `));
       setTimeout(() => {
         resolve();
       }, 1000 + this.distance);
@@ -148,7 +169,24 @@ class Wait extends GameEvent {
 
   init(): Promise<void> {
     return new Promise(resolve => {
-      console.log(`Waiting... this long ${this.duration} `);
+      console.log(chalk.blue(`Waiting... this long ${this.duration} `));
+      setTimeout(() => {
+        resolve();
+      }, this.duration);
+    });
+  }
+}
+
+class BLWait extends GameEvent {
+  duration: number;
+  constructor(duration: number) {
+    super("wait");
+    this.duration = duration;
+  }
+
+  init(): Promise<void> {
+    return new Promise(resolve => {
+      console.log(chalk.red(`LOOP -Waiting... this long ${this.duration} `));
       setTimeout(() => {
         resolve();
       }, this.duration);
@@ -173,14 +211,17 @@ class Alert extends GameEvent {
 
 class Log extends GameEvent {
   messsage: string;
-  constructor(message: string) {
+  color: string;
+  constructor(message: string, color: "blue" | "red") {
     super("log");
     this.messsage = message;
+    this.color = color;
   }
 
   init(): Promise<void> {
     return new Promise(resolve => {
-      console.log(this.messsage);
+      if (this.color == "red") console.log(chalk.red(this.messsage));
+      else if (this.color == "blue") console.log(chalk.blue(this.messsage));
       resolve();
     });
   }
